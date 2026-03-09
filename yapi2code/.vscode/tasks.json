@@ -1,0 +1,63 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "nvm-build",
+      "type": "shell",
+      "command": "source ~/.nvm/nvm.sh && nvm use 18 && npm run build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "nvm-watch:ext",
+      "type": "shell",
+      "command": "source ~/.nvm/nvm.sh && nvm use 18 && npm run watch:ext",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": ".",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "built in"
+        }
+      }
+    },
+    {
+      "label": "nvm-watch:webview",
+      "type": "shell",
+      "command": "source ~/.nvm/nvm.sh && nvm use 18 && npm run watch:webview",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": ".",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "built in"
+        }
+      }
+    },
+    {
+      "label": "build then watch",
+      "dependsOn": ["nvm-build", "watch all"],
+      "dependsOrder": "sequence"
+    },
+    {
+      "label": "watch all",
+      "dependsOn": ["nvm-watch:ext", "nvm-watch:webview"],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+export enum MsgType {
+  // 登录相关
+  LOGIN_NOW = 'LOGIN_NOW',
+  LOGIN_BY_LDAP = 'LOGIN_BY_LDAP',
+  LOGIN_STATUS = 'LOGIN_STATUS',
+  LOGOUT = 'LOGOUT',
+
+  // 服务器地址
+  SERVER_URL = 'SERVER_URL',
+
+  // 数据获取
+  FETCH_PROJECT = 'FETCH_PROJECT',
+  FETCH_INTERFACE_MENU = 'FETCH_INTERFACE_MENU',
+  FETCH_DETAIL = 'FETCH_DETAIL',
+
+  // 配置相关
+  CREATE_YTT_CONFIG = 'CREATE_YTT_CONFIG',
+  REFRESH_CONFIG = 'REFRESH_CONFIG',
+  YAPI_CONFIG_DATA = 'YAPI_CONFIG_DATA',
+
+  // 代码生成
+  GENERATE_CODE = 'GENERATE_CODE',
+  COPY_CODE = 'COPY_CODE',
+  INSERT_CODE = 'INSERT_CODE',
+  SHOW_CODE = 'SHOW_CODE',
+  BATCH_GENERATE_CODE = 'BATCH_GENERATE_CODE',
+
+  // 编辑配置
+  EDIT_YTT_CONFIG = 'EDIT_YTT_CONFIG',
+
+  // 文件操作
+  OPEN_EXTERNAL_LINK = 'OPEN_EXTERNAL_LINK',
+  OPEN_FILE = 'OPEN_FILE',
+  GET_WORKSPACE_ROOT = 'GET_WORKSPACE_ROOT',
+
+  // 存储
+  SET_STORAGE = 'SET_STORAGE',
+  GET_STORAGE = 'GET_STORAGE',
+
+  // Webview 生命周期
+  WEBVIEW_READY = 'WEBVIEW_READY',
+  INIT_CONFIG = 'INIT_CONFIG',
+}
+
+export enum DoveMode {
+  INITIATIVE = 0,
+  PASSIVE = 1,
+}
+
+export interface DoveMessage<T = any> {
+  key: string;
+  type: MsgType;
+  mode: DoveMode;
+  data: T;
+}
