@@ -173,6 +173,18 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher.onDidChange(notifyYttChanged);
   watcher.onDidCreate(notifyYttChanged);
   context.subscriptions.push(watcher);
+
+  // Watch output directory for generated file changes
+  const outputConfig = vscode.workspace.getConfiguration('yapi2code');
+  const outputPath = outputConfig.get<string>('outputPath') || 'src/api';
+  const outputWatcher = vscode.workspace.createFileSystemWatcher(`**/${outputPath}/*.ts`);
+  const notifyFilesChanged = () => {
+    currentDove?.sendMessage(MsgType.GENERATED_FILES_CHANGED);
+  };
+  outputWatcher.onDidCreate(notifyFilesChanged);
+  outputWatcher.onDidDelete(notifyFilesChanged);
+  outputWatcher.onDidChange(notifyFilesChanged);
+  context.subscriptions.push(outputWatcher);
 }
 
 export function deactivate(): void {

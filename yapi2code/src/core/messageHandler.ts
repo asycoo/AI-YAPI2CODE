@@ -291,6 +291,36 @@ export function registerMessageHandlers(dove: Dove): void {
 
     return { success: true, count: successCount };
   });
+
+  dove.subscribe(MsgType.CHECK_GENERATED_FILES, async (data: { items: { id: number; path: string }[] }) => {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return { generated: {} };
+
+    const config = vscode.workspace.getConfiguration('yapi2code');
+    const outputPath = config.get<string>('outputPath') || 'src/api';
+    const dir = path.join(workspaceRoot, outputPath);
+
+    const generated: Record<number, string> = {};
+    for (const item of data.items) {
+      const fnName = getApiName(item.path);
+      const filePath = path.join(dir, `${fnName}.ts`);
+      if (fs.existsSync(filePath)) {
+        generated[item.id] = filePath;
+      }
+    }
+    return { generated };
+  });
+
+  dove.subscribe(MsgType.OPEN_GENERATED_FILE, async (data: { filePath: string }) => {
+    try {
+      const doc = await vscode.workspace.openTextDocument(data.filePath);
+      await vscode.window.showTextDocument(doc);
+      return { success: true };
+    } catch {
+      vscode.window.showErrorMessage('无法打开文件');
+      return { success: false };
+    }
+  });
 }
 
 function getWorkspaceRoot(): string | undefined {

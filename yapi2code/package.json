@@ -70,6 +70,7 @@
     "build:webview": "vite build --config vite.config.webview.ts",
     "dev:webview": "vite --config vite.config.webview.ts",
     "watch:ext": "vite build --config vite.config.ext.ts --watch",
+    "watch:webview": "vite build --config vite.config.webview.ts --watch",
     "package": "vsce package"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Input, Spin, Dropdown, message, Empty, Button, Checkbox } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Input, Spin, Dropdown, message, Empty, Button, Checkbox, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   SearchOutlined,
@@ -11,8 +11,9 @@ import {
   InsertRowBelowOutlined,
   RightOutlined,
   DownOutlined,
+  CheckCircleFilled,
 } from '@ant-design/icons';
-import { dove, MsgType } from '../../utils/dove';
+import { dove, MsgType, useDoveSubscribe } from '../../utils/dove';
 import MethodTag from './MethodTag';
 import './index.less';
 
@@ -52,20 +53,34 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
   const [searchValue, setSearchValue] = useState('');
   const [collapsedProjects, setCollapsedProjects] = useState<Set<number>>(new Set());
   const [collapsedCategories, setCollapsedCategories] = useState<Set<number>>(new Set());
+  const [generatedFiles, setGeneratedFiles] = useState<Record<number, string>>({});
+  const [serverUrl, setServerUrl] = useState('');
 
-  // Batch mode
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     loadProjects();
+    loadServerUrl();
   }, [configs]);
+
+  useDoveSubscribe(MsgType.GENERATED_FILES_CHANGED, () => {
+    refreshGeneratedFiles();
+  });
+
+  async function loadServerUrl() {
+    try {
+      const res = await dove.sendMessage<{ value: string }>(MsgType.GET_STORAGE, { key: 'yapi2code.serverUrl' });
+      setServerUrl(res?.value || '');
+    } catch {}
+  }
 
   async function loadProjects() {
     setLoading(true);
     try {
       const result: ProjectData[] = [];
       const allCatIds: number[] = [];
+      const allItems: { id: number; path: string }[] = [];
 
       for (const cfg of configs) {
         const projRes = await dove.sendMessage<{
@@ -89,16 +104,47 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
             name: projectName,
             categories: menuRes.data,
           });
-          menuRes.data.forEach((cat) => allCatIds.push(cat._id));
+          menuRes.data.forEach((cat) => {
+            allCatIds.push(cat._id);
+            cat.list.forEach((item) => allItems.push({ id: item._id, path: item.path }));
+          });
         }
       }
 
       setProjects(result);
       setCollapsedCategories(new Set(allCatIds));
+
+      if (allItems.length > 0) {
+        checkGeneratedFiles(allItems);
+      }
     } catch (err: any) {
       message.error('加载项目数据失败: ' + err.message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function checkGeneratedFiles(items: { id: number; path: string }[]) {
+    try {
+      const res = await dove.sendMessage<{ generated: Record<number, string> }>(
+        MsgType.CHECK_GENERATED_FILES,
+        { items }
+      );
+      if (res?.generated) {
+        setGeneratedFiles(res.generated);
+      }
+    } catch {}
+  }
+
+  function refreshGeneratedFiles() {
+    const allItems: { id: number; path: string }[] = [];
+    projects.forEach((p) =>
+      p.categories.forEach((c) =>
+        c.list.forEach((item) => allItems.push({ id: item._id, path: item.path }))
+      )
+    );
+    if (allItems.length > 0) {
+      checkGeneratedFiles(allItems);
     }
   }
 
@@ -159,6 +205,7 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
           break;
         case 'show':
           await dove.sendMessage(MsgType.SHOW_CODE, { code: fullCode, fileName: `${fnName}.ts` });
+          refreshGeneratedFiles();
           break;
       }
     } catch (err: any) {
@@ -173,6 +220,7 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
     }
     try {
       await dove.sendMessage(MsgType.BATCH_GENERATE_CODE, { ids: Array.from(selectedIds) });
+      refreshGeneratedFiles();
     } catch (err: any) {
       message.error(err.message);
     }
@@ -188,7 +236,29 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
     onLogout();
   }
 
-  // Filter logic
+  function handleOpenGeneratedFile(apiId: number) {
+    const filePath = generatedFiles[apiId];
+    if (filePath) {
+      dove.sendMessage(MsgType.OPEN_GENERATED_FILE, { filePath });
+    }
+  }
+
+  function handleOpenInYapi(item: InterfaceItem, projectId: number) {
+    if (!serverUrl) return;
+    dove.sendMessage(MsgType.OPEN_EXTERNAL_LINK, {
+      url: `${serverUrl}/project/${projectId}/interface/api/${item._id}`,
+    });
+  }
+
+  function findProjectId(itemId: number): number {
+    for (const proj of projects) {
+      for (const cat of proj.categories) {
+        if (cat.list.some((i) => i._id === itemId)) return proj.projectId;
+      }
+    }
+    return 0;
+  }
+
   function filterProjects(data: ProjectData[], search: string): ProjectData[] {
     if (!search) return data;
     const lower = search.toLowerCase();
@@ -237,7 +307,6 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
       disabled={batchMode}
     >
       <div className="api-tree-container">
-        {/* Header */}
         <div className="tree-header">
           <div className="toolbar">
             <Input
@@ -250,14 +319,19 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
               onChange={(e) => setSearchValue(e.target.value)}
             />
             <div className="toolbar-actions">
-              <EditOutlined className="toolbar-icon" title="编辑 ytt.json" onClick={handleEditConfig} />
-              <ReloadOutlined className="toolbar-icon" title="刷新数据" onClick={() => loadProjects()} />
-              <LogoutOutlined className="toolbar-icon" title="退出登录" onClick={handleLogout} />
+              <Tooltip title="编辑 ytt.json">
+                <EditOutlined className="toolbar-icon" onClick={handleEditConfig} />
+              </Tooltip>
+              <Tooltip title="刷新数据">
+                <ReloadOutlined className="toolbar-icon" onClick={() => loadProjects()} />
+              </Tooltip>
+              <Tooltip title="退出登录">
+                <LogoutOutlined className="toolbar-icon" onClick={handleLogout} />
+              </Tooltip>
             </div>
           </div>
         </div>
 
-        {/* Batch mode header */}
         {batchMode && (
           <div className="batch-header">
             <span>已选择 {selectedIds.size} 个接口</span>
@@ -272,7 +346,6 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
           </div>
         )}
 
-        {/* Content */}
         <div className="tree-content">
           {displayData.length > 0 ? (
             displayData.map((proj) => (
@@ -306,42 +379,73 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
                       </div>
 
                       {!collapsedCategories.has(cat._id) &&
-                        cat.list.map((item) => (
-                          <div
-                            key={item._id}
-                            className={`api-item ${selectedIds.has(item._id) ? 'selected' : ''}`}
-                          >
-                            {batchMode && (
-                              <Checkbox
-                                className="api-checkbox"
-                                checked={selectedIds.has(item._id)}
-                                onChange={() => toggleSelect(item._id)}
-                              />
-                            )}
-                            <MethodTag method={item.method} />
-                            <span className="api-title">{item.title}</span>
-                            <span className="api-path">{item.path}</span>
-                            {!batchMode && (
-                              <span className="api-actions">
-                                <CopyOutlined
-                                  className="action-icon"
-                                  title="复制接口定义"
-                                  onClick={(e) => { e.stopPropagation(); handleAction(item, 'copy'); }}
+                        cat.list.map((item) => {
+                          const isGenerated = !!generatedFiles[item._id];
+                          return (
+                            <div
+                              key={item._id}
+                              className={`api-item ${selectedIds.has(item._id) ? 'selected' : ''}`}
+                            >
+                              {batchMode && (
+                                <Checkbox
+                                  className="api-checkbox"
+                                  checked={selectedIds.has(item._id)}
+                                  onChange={() => toggleSelect(item._id)}
                                 />
-                                <InsertRowBelowOutlined
-                                  className="action-icon"
-                                  title="插入接口定义到光标"
-                                  onClick={(e) => { e.stopPropagation(); handleAction(item, 'insert'); }}
-                                />
-                                <FileAddOutlined
-                                  className="action-icon"
-                                  title="生成接口文件"
-                                  onClick={(e) => { e.stopPropagation(); handleAction(item, 'show'); }}
-                                />
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                              )}
+                              <div className="api-item-content">
+                                <div className="api-item-title">
+                                  {isGenerated ? (
+                                    <Tooltip title="该接口已生成，点我打开文件">
+                                      <span
+                                        className="api-title-text clickable"
+                                        onClick={() => handleOpenGeneratedFile(item._id)}
+                                      >
+                                        {item.title}
+                                        <CheckCircleFilled className="generated-check" />
+                                      </span>
+                                    </Tooltip>
+                                  ) : (
+                                    <span className="api-title-text">{item.title}</span>
+                                  )}
+                                </div>
+                                <div className="api-item-meta">
+                                  <MethodTag method={item.method} />
+                                  <Tooltip title="查看接口详情">
+                                    <span
+                                      className="api-path clickable"
+                                      onClick={() => handleOpenInYapi(item, proj.projectId)}
+                                    >
+                                      {item.path}
+                                    </span>
+                                  </Tooltip>
+                                </div>
+                              </div>
+                              {!batchMode && (
+                                <span className="api-actions">
+                                  <Tooltip title="复制接口定义">
+                                    <CopyOutlined
+                                      className="action-icon"
+                                      onClick={(e) => { e.stopPropagation(); handleAction(item, 'copy'); }}
+                                    />
+                                  </Tooltip>
+                                  <Tooltip title="插入接口定义到光标">
+                                    <InsertRowBelowOutlined
+                                      className="action-icon"
+                                      onClick={(e) => { e.stopPropagation(); handleAction(item, 'insert'); }}
+                                    />
+                                  </Tooltip>
+                                  <Tooltip title="生成接口文件">
+                                    <FileAddOutlined
+                                      className="action-icon"
+                                      onClick={(e) => { e.stopPropagation(); handleAction(item, 'show'); }}
+                                    />
+                                  </Tooltip>
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
                     </div>
                   ))}
               </div>
