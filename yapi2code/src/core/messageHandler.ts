@@ -1,3 +1,7 @@
+/**
+ * 消息处理器：为 Dove 注册各 MsgType 的订阅
+ * Webview 调用 dove.sendMessage(MsgType.XXX, data) 时，对应 handler 执行并返回结果
+ */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';

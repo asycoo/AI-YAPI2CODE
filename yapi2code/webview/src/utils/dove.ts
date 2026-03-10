@@ -1,3 +1,8 @@
+/**
+ * Dove：Webview 与 Extension 的通信层
+ * Webview 运行在 iframe 沙箱中，只能通过 postMessage 与 Extension 通信
+ * 采用请求-响应模式：Webview 发送 INITIATIVE 消息，Extension 处理后返回 PASSIVE 消息
+ */
 import { useEffect, useRef, useCallback } from 'react';
 
 export enum MsgType {
@@ -31,8 +36,8 @@ export enum MsgType {
 }
 
 enum DoveMode {
-  INITIATIVE = 0,
-  PASSIVE = 1,
+  INITIATIVE = 0, // Webview 主动发起，期待 Extension 返回结果
+  PASSIVE = 1,    // Extension 的响应，或 Extension 主动推送给 Webview
 }
 
 interface DoveMessage<T = any> {
@@ -48,6 +53,8 @@ function uuid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+// VSCode 注入的 API，只能在 Webview 内调用一次，用于 postMessage 与 Extension 通信
+// 开发时可能未注入，用 mock 避免报错
 const vscode = (window as any).acquireVsCodeApi?.() ?? {
   postMessage: (msg: any) => console.log('[dev] postMessage:', msg),
 };
@@ -62,12 +69,14 @@ class DoveClient {
     });
   }
 
+  // 发送消息并等待 Extension 返回，通过 key 关联请求与响应
   sendMessage<T = any>(type: MsgType, data?: any): Promise<T> {
     return new Promise((resolve, reject) => {
       const key = uuid();
       this.pendingPool.set(key, { resolve, reject });
       vscode.postMessage({ key, type, mode: DoveMode.INITIATIVE, data });
 
+      // 超时 30 秒未响应则 reject
       setTimeout(() => {
         if (this.pendingPool.has(key)) {
           this.pendingPool.delete(key);
@@ -80,6 +89,7 @@ class DoveClient {
   private async receiveMessage(msg: DoveMessage): Promise<void> {
     if (!msg || !msg.type) return;
 
+    // PASSIVE：Extension 的响应，从 pendingPool 找到对应 resolve 并返回
     if (msg.mode === DoveMode.PASSIVE) {
       const pending = this.pendingPool.get(msg.key);
       if (pending) {
@@ -89,6 +99,7 @@ class DoveClient {
       return;
     }
 
+    // INITIATIVE 且无 pending：Extension 主动推送，执行订阅的回调并回传结果
     const callbacks = this.subscribePool.get(msg.type) || [];
     let result: any;
     for (const cb of callbacks) {
@@ -102,6 +113,7 @@ class DoveClient {
     });
   }
 
+  // 订阅某类消息，当 Extension 推送该类型时执行 callback，返回取消订阅函数
   subscribe(type: MsgType, callback: SubscribeCallback): () => void {
     const list = this.subscribePool.get(type) || [];
     list.push(callback);
@@ -115,6 +127,7 @@ class DoveClient {
 
 export const dove = new DoveClient();
 
+// React Hook：订阅消息，组件卸载时自动取消
 export function useDoveSubscribe(type: MsgType, callback: SubscribeCallback): void {
   const cbRef = useRef(callback);
   cbRef.current = callback;

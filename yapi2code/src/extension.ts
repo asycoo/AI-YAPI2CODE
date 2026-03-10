@@ -1,3 +1,8 @@
+/**
+ * VSCode 扩展入口
+ * activate：扩展被激活时调用（如用户打开左侧面板）
+ * deactivate：扩展被卸载/禁用时调用
+ */
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,24 +22,31 @@ import * as yapiApi from './services/yapiApi';
 let currentDove: Dove | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  // 初始化持久化存储，用于保存登录态、cookie 等
   initStorage(context);
 
+  // 恢复上次保存的 YAPI 服务器地址，用于发请求
   const savedUrl = getStorage<string>(StorageKey.SERVER_URL);
   if (savedUrl) {
     initRequest(savedUrl);
   }
 
+  // 创建 Webview 提供者，负责在侧边栏渲染 React 页面
   const webviewProvider = new WebviewProvider(context.extensionUri);
 
+  // 当 Webview 挂载完成后，拿到 dove 通信实例，注册所有消息处理器
   webviewProvider.onDidMount((dove) => {
     currentDove = dove;
     registerMessageHandlers(dove);
   });
 
+  // Webview 关闭时清理引用
   webviewProvider.onUnMount(() => {
     currentDove = undefined;
   });
 
+  // 将 Webview 注册到 VSCode 侧边栏，viewType 需与 package.json 中 contributes.views 一致
+  // retainContextWhenHidden: 隐藏时保留上下文，避免切换面板时页面重新加载
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       WebviewProvider.viewType,
@@ -43,6 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
+  // 注册命令：可在命令面板、快捷键、右键菜单中触发
   context.subscriptions.push(
     vscode.commands.registerCommand('yapi2code.refresh', () => {
       currentDove?.sendMessage(MsgType.REFRESH_CONFIG);
@@ -74,7 +87,7 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  // HoverProvider for TS/TSX/JS/JSX
+  // 悬浮提示：鼠标悬停在 TS/TSX/JS/JSX 文件中的 API 函数名上时显示接口信息
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
       [
@@ -158,7 +171,7 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  // Watch ytt.json for changes
+  // 监听 ytt.json 文件变化，修改后通知 Webview 刷新配置，并弹出提示
   const notifyYttChanged = () => {
     vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, cancellable: false },
@@ -174,7 +187,7 @@ export function activate(context: vscode.ExtensionContext): void {
   watcher.onDidCreate(notifyYttChanged);
   context.subscriptions.push(watcher);
 
-  // Watch output directory for generated file changes
+  // 监听输出目录（src/api/*.ts）的增删改，用于同步绿勾状态（如删除文件后绿勾消失）
   const outputConfig = vscode.workspace.getConfiguration('yapi2code');
   const outputPath = outputConfig.get<string>('outputPath') || 'src/api';
   const outputWatcher = vscode.workspace.createFileSystemWatcher(`**/${outputPath}/*.ts`);

@@ -1,3 +1,7 @@
+/**
+ * Webview 主应用
+ * 页面流程：loading -> login（未登录）| config（无 ytt.json）| apiTree（已配置）
+ */
 import React, { useState, useEffect } from 'react';
 import { Spin } from 'antd';
 import { dove, MsgType, useDoveSubscribe } from './utils/dove';
@@ -20,16 +24,20 @@ const App: React.FC = () => {
     init();
   }, []);
 
+  // 监听 Extension 推送的消息：ytt.json 变更时刷新配置
   useDoveSubscribe(MsgType.REFRESH_CONFIG, async () => {
     await checkConfig();
   });
 
+  // 监听退出登录，切回登录页
   useDoveSubscribe(MsgType.LOGOUT, () => {
     setPage('login');
   });
 
   async function init() {
+    // 通知 Extension Webview 已就绪
     await dove.sendMessage(MsgType.WEBVIEW_READY);
+    // 检查登录态，未登录则跳转登录页
     const status = await dove.sendMessage<{ loggedIn: boolean }>(MsgType.LOGIN_STATUS);
     if (!status.loggedIn) {
       setPage('login');
@@ -38,6 +46,7 @@ const App: React.FC = () => {
     await checkConfig();
   }
 
+  // 检查工作区是否有 ytt.json 且包含有效配置，有则进 apiTree，无则进 config
   async function checkConfig() {
     const result = await dove.sendMessage<{ hasConfig: boolean; configs: YttConfig[] }>(
       MsgType.YAPI_CONFIG_DATA
