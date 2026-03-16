@@ -123,7 +123,7 @@ const ApiTree: React.FC<ApiTreeProps> = ({ configs, onLogout, onRefresh }) => {
       setLoading(false);
     }
   }
-
+  // 检查哪些生成了
   async function checkGeneratedFiles(items: { id: number; path: string }[]) {
     try {
       const res = await dove.sendMessage<{ generated: Record<number, string> }>(

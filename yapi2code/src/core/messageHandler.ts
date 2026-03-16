@@ -289,7 +289,7 @@ export function registerMessageHandlers(dove: Dove): void {
     }
 
     vscode.window.showInformationMessage(`已生成 ${successCount} 个接口文件`);
-
+    // 在 VS Code 的“资源管理器”（侧边栏的文件树）中，自动定位并高亮显示指定的文件夹。
     const dirUri = vscode.Uri.file(dir);
     vscode.commands.executeCommand('revealInExplorer', dirUri);
 
